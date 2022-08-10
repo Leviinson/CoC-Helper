@@ -1,2 +1,5 @@
 venv/
 __pycache__/
+.gitignore
+bot_config.py
+mysql_config.py
