@@ -1,0 +1,6 @@
+aiogram==2.21
+aiohttp==3.8.1
+ujson==5.4.0
+requests==2.28.1
+emoji==1.7.0
+mysql-connector-python==8.0.19
