@@ -34,7 +34,7 @@ async def anti_flood(msg: types.Message, *args, **kwargs):
 async def get_clan_members(msg: types.Message):
 
 
-    clan_tag = await clan._get_clan_tag(msg.chat.id)
+    clan_tag = clan.get_clan_tag(msg.chat.id)
     caption = await clan.get_caption_memberlist(clan_tag)
     await msg.answer(caption, ParseMode.MARKDOWN_V2)
 
@@ -44,7 +44,7 @@ async def get_clan_members(msg: types.Message):
 async def get_cw_memberlist(msg: types.Message):
     
     
-    clan_tag = await clan._get_clan_tag(msg.chat.id)
+    clan_tag = clan.get_clan_tag(msg.chat.id)
     caption = await clan.get_caption_cw_memberlist(clan_tag)
     await msg.answer(caption, ParseMode.MARKDOWN_V2)
 
@@ -54,7 +54,7 @@ async def get_cw_memberlist(msg: types.Message):
 async def get_cwl_memberlist(msg: types.Message):
 
     
-    clan_tag = await clan._get_clan_tag(msg.chat.id)
+    clan_tag = clan.get_clan_tag(msg.chat.id)
     caption = await clan.get_caption_cwl_memberlist(clan_tag)
     await msg.answer(caption, ParseMode.MARKDOWN_V2)
 
@@ -64,7 +64,7 @@ async def get_cwl_memberlist(msg: types.Message):
 async def get_remaining_time_cw(msg: types.Message):
     
     
-    clan_tag = await clan._get_clan_tag(msg.chat.id)
+    clan_tag = clan.get_clan_tag(msg.chat.id)
     caption = await clan.get_cw_status(clan_tag)
     await msg.answer(caption, ParseMode.MARKDOWN_V2)
 
@@ -74,7 +74,7 @@ async def get_remaining_time_cw(msg: types.Message):
 async def get_current_cwl_status(msg: types.Message):
 
 
-    clan_tag = await clan._get_clan_tag(msg.chat.id)
+    clan_tag = clan.get_clan_tag(msg.chat.id)
     caption = await clan.get_cwl_status(clan_tag)
     await msg.answer(caption, ParseMode.MARKDOWN_V2)
 
@@ -84,7 +84,7 @@ async def get_current_cwl_status(msg: types.Message):
 async def get_cwl_results(msg: types.Message):
 
 
-    clan_tag = await clan._get_clan_tag(msg.chat.id)
+    clan_tag = clan.get_clan_tag(msg.chat.id)
     caption = await clan.get_cwl_results(clan_tag.replace('0', 'O'), msg.chat.id)
     await msg.answer(caption, ParseMode.MARKDOWN_V2)
 
@@ -92,7 +92,7 @@ async def get_cwl_results(msg: types.Message):
 @dp.message_handler(commands = 'rade_statistic', state = Authentification.clan_tag_registered)
 async def get_rade_statistic(msg: types.Message):
 
-    clan_tag = await clan._get_clan_tag(msg.chat.id)
+    clan_tag = clan.get_clan_tag(msg.chat.id)
     caption = await clan.get_caption_rade_statistic(clan_tag, msg.chat.id)
     await msg.answer(caption, ParseMode.MARKDOWN_V2)
 

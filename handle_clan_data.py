@@ -70,6 +70,16 @@ class ClanMembersInfo(NamedTuple):
     members_roles: list[str]
 
 
+class DateTime(NamedTuple):
+
+
+    year: str
+    month: str
+    day: str
+    hour: str
+    minute: str
+    seconds: str
+
 
 def request_to_api(api_req: str) -> Response:
 
@@ -91,71 +101,10 @@ def request_to_api(api_req: str) -> Response:
         return Response(status_code, json_clan_info)
 
 
-class ResponseHandler(DataBaseManipulation):
-
-
-    def _update_memberlist_in_DB(self, members_names: list[str], members_tags: list[str], members_roles: list[str], clan_tag: str):
-
-
-        self.delete(Tables.ClanMembers.value, f"WHERE clan_tag = '{clan_tag}' AND member_tag NOT IN {tuple(members_tags)}")
-
-        for member_name, member_tag, member_role in zip(members_names, members_tags, members_roles):
-            self.insert(Tables.ClanMembers.value, {'member_name': member_name,
-                        'member_tag' : member_tag,
-                        'member_role' : member_role,
-                        'clan_tag' : clan_tag}, ignore = True) 
-
-
-    def _update_cwl_memberlist_in_DB(self, members_info: ClanWarLeagueMembersInfo, clan_tag: str):
-        
-
-        for member_name, member_tag, townHallLevel in zip(members_info.members_names, members_info.members_tags, members_info.members_townHallLevel):
-            self.insert(Tables.CWL_members.value, {'member_name' : member_name,
-                                                   'member_tag' : member_tag,
-                                                   'townHallLevel' : townHallLevel,
-                                                   'clan_tag' : clan_tag}, ignore=True)
-
-
-    def _parse_clan_members_db_response(self, response: Response) -> ClanMembersInfo:
-
-        match response.status_code:
-
-            case 200:
-
-                    members_names = [member['name'] for member in response.json_clan_info['items']]
-                    members_tags = [member['tag'] for member in response.json_clan_info['items']]
-                    members_roles = [members['role'] for members in response.json_clan_info['items']]
-
-                    return ClanMembersInfo(members_names, members_tags, members_roles)
-                
-            case 404:
-                
-                raise BadRequestError()
-
-
-    def _get_cw_membersinfo(self, response: Response) -> str:
-
-
-        match response.status_code:
-
-            case 200:
-
-                if response.json_clan_info['state'] in ['inWar', 'preparation', 'warEnded']:
-
-                    members_tags = (member['tag'] for member in response.json_clan_info['clan']['members'])
-                    members_names = (member['name'] for member in response.json_clan_info['clan']['members'])
-                    members_map_positions = (member['mapPosition'] for member in response.json_clan_info['clan']['members'])
-
-                    return ClanWarMembersInfo(members_names, members_tags, members_map_positions)
-
-                else:
-                    raise ClanWarEndedError()
-
-            case 404:
-                raise BadRequestError()
+class Parsers: 
 
     
-    def _parse_cw_members_db_response(self, members_info: ClanWarMembersInfo):
+    def _parse_cw_membersinfo_to_caption(self, members_info: ClanWarMembersInfo):
 
         
         caption = ''
@@ -166,7 +115,7 @@ class ResponseHandler(DataBaseManipulation):
         return caption
 
 
-    async def _parse_cwl_clan_members(self, members_info: list[tuple]) -> str:
+    def _parse_cwl_membersinfo_to_caption(self, members_info: list[tuple]) -> str:
 
 
         caption = ''
@@ -178,29 +127,35 @@ class ResponseHandler(DataBaseManipulation):
         return caption
 
     
-    def _parse_current_cwl_roundstatus(self, current_round: int) -> str:
+    def _parse_rade_statistic_to_caption(self, members_info: list[str]) -> str:
 
 
-        match current_round:
-
-            case 0:
-
-                caption = text(bold('Підготовка до першого раунду ⚔️'))
-
-            case _:
-                caption = text(bold(f'Підготовка до {current_round} раунду, війна на {current_round-1} раунді 🔫'))
-
+        caption = ''
+        for index, member_info in enumerate(members_info):
+            caption += text(bold(f"{index+1}."),
+                            bold(f"👤 {member_info[0]}"),
+                            bold(f"Накопичені 🪙: {member_info[1]}"),
+                            bold(f"Пожертвувані 🪙: {member_info[2]}"),
+                            bold(f"Збережені 🪙: {member_info[3]}\n\n"), sep = '\n')
         return caption
 
-
-class ClanDataExtractions(ResponseHandler):
-
-
-    async def _get_clan_tag(self, chat_id: int) -> str:
+    
+    def _parse_datetime(self, unparsed_datetime: str) -> DateTime:
 
 
-        clan_tag = self.fetch_one('clan_tag', Tables.Chats.value, f'WHERE chat_id = {chat_id}')
-        return clan_tag[0]
+        year = unparsed_datetime[:4]
+        month = unparsed_datetime[4:6]
+        day = unparsed_datetime[6:8]
+        hour = unparsed_datetime[9:11]
+        minute = unparsed_datetime[11:13]
+        seconds = unparsed_datetime[13:15]
+
+        return DateTime(year, month, day,
+                        hour, minute, seconds)
+
+
+class ClanDataExtractions(DataBaseManipulation, Parsers):
+
 
     @staticmethod
     def _is_cwl_ended(cwl_state: dict[str,str]) -> bool:
@@ -209,13 +164,18 @@ class ClanDataExtractions(ResponseHandler):
         match cwl_state:
 
             case 'ended':
-                
                 return True
 
             case _:
-
                 return False
 
+
+    def get_clan_tag(self, chat_id: int) -> str:
+
+
+        clan_tag = self.fetch_one('clan_tag', Tables.Chats.value, f'WHERE chat_id = {chat_id}')
+        return clan_tag[0]
+    
 #------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
     async def get_cw_status(self, clan_tag: str) -> str:
@@ -227,33 +187,15 @@ class ClanDataExtractions(ResponseHandler):
         match cw_info['state']:
 
             case 'inWar':
-
                 caption = self._get_event_endtime('endTime', cw_info, utcnow_time)
 
             case 'preparation':
-
                 caption = self._get_event_endtime('startTime', cw_info, utcnow_time)
 
             case _:
-
                 caption = text(bold('Війна закінчена або не розпочата 😔'))
         
         return caption
-
-    def __parse_datetime(self, unparsed_datetime: str) -> dict:
-
-
-        year = unparsed_datetime[:4]
-        month = unparsed_datetime[4:6]
-        day = unparsed_datetime[6:8]
-        hour = unparsed_datetime[9:11]
-        minute = unparsed_datetime[11:13]
-        second = unparsed_datetime[13:15]
-
-        return {
-                'hour' : hour, 'minute' : minute, 'second' : second, 
-                'year' : year, 'month' : month, 'day' : day
-               }
          
 #------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
     
@@ -317,8 +259,8 @@ class ClanDataExtractions(ResponseHandler):
                                                         clan_tag
                                                        ) 
 
-
-            caption = await self._parse_cwl_membersinfo_to_caption(clan_tag)
+            members_info = self.fetch_all('*', Tables.CWL_members.value, f"WHERE clan_tag = '{clan_tag}'")
+            caption = self._parse_cwl_membersinfo_to_caption(members_info)
             return caption
 
 
@@ -365,14 +307,6 @@ class ClanDataExtractions(ResponseHandler):
         Thread_PollClanWarLeagueMemberlist(event, 600, clan_tag, state).start()
 
     
-    async def _parse_cwl_membersinfo_to_caption(self, clan_tag: str) -> str:
-
-    
-        members_info = self.fetch_all('*', Tables.CWL_members.value, f"WHERE clan_tag = '{clan_tag}'")
-        caption = await self._parse_cwl_clan_members(members_info)
-        return caption
-
-    
     async def _insert_cwl_memberlist_in_DB(self, response: Response, clan_tag: str) -> str:
 
 
@@ -384,7 +318,7 @@ class ClanDataExtractions(ResponseHandler):
 
                     json_necessary_clan_info = self._find_necessary_clan(response.json_clan_info, clan_tag)
                     memberlist = json_necessary_clan_info['members']
-                    members_info = self._return_cwl_members_info(memberlist)
+                    members_info = self._get_cwl_members_info(memberlist)
                     self._update_cwl_memberlist_in_DB(members_info, clan_tag)
 
 
@@ -410,7 +344,7 @@ class ClanDataExtractions(ResponseHandler):
         
 
     @staticmethod
-    def _return_cwl_members_info(memberlist: Dict[str, str]) -> ClanWarLeagueMembersInfo:
+    def _get_cwl_members_info(memberlist: Dict[str, str]) -> ClanWarLeagueMembersInfo:
 
         
         members_names = (member['name'] for member in memberlist)
@@ -418,6 +352,16 @@ class ClanDataExtractions(ResponseHandler):
         members_townhalls = (member['townHallLevel'] for member in memberlist)
 
         return ClanWarLeagueMembersInfo(members_names, members_tags, members_townhalls)
+
+    
+    def _update_cwl_memberlist_in_DB(self, members_info: ClanWarLeagueMembersInfo, clan_tag: str):
+        
+
+        for member_name, member_tag, townHallLevel in zip(members_info.members_names, members_info.members_tags, members_info.members_townHallLevel):
+            self.insert(Tables.CWL_members.value, {'member_name' : member_name,
+                                                   'member_tag' : member_tag,
+                                                   'townHallLevel' : townHallLevel,
+                                                   'clan_tag' : clan_tag}, ignore=True)
 
     #------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -439,11 +383,8 @@ class ClanDataExtractions(ResponseHandler):
                         await self._notify_about_start_of_the_process(chat_id)
 
                         if members_authentificated_flag:
-
-                            rounds = map(self._collect_cwl_round_tags, cwl_info_json['rounds'])
-                            for war_tags in rounds:
-                                    self._handle_necessary_round_war_tag(war_tags, clan_tag)
-
+                            self._load_cwl_results_in_table(clan_tag, cwl_info_json['rounds'])
+                            
                         caption = self._parse_cwl_results_to_caption(clan_tag)
                         return caption
 
@@ -460,6 +401,13 @@ class ClanDataExtractions(ResponseHandler):
 
             caption = text(bold('З мого боку сталася помилка 😔'))
             return caption
+
+    def _load_cwl_results_in_table(self, clan_tag: str, cwl_rounds_info_json: dict[str]):
+
+
+        rounds = map(self._collect_cwl_round_tags, cwl_rounds_info_json)
+        for war_tags in rounds:
+                self._handle_necessary_round_war_tag(war_tags, clan_tag)
 
     
     def _collect_cwl_round_tags(self, cwl_rounds_info_json: dict[str, str]):
@@ -506,7 +454,7 @@ class ClanDataExtractions(ResponseHandler):
     def _insert_cwl_member_result_in_table(self, member_cwl_result: ClanWarLeagueMembersAttacksResult, clan_tag: str):
         
 
-        self.insert('ClanWarLeague_results', {"member_name": member_cwl_result.members_names, "member_tag" : member_cwl_result.members_tags, "stars" : member_cwl_result.members_stars,
+        self.insert(Tables.CWL_results.value, {"member_name": member_cwl_result.members_names, "member_tag" : member_cwl_result.members_tags, "stars" : member_cwl_result.members_stars,
                     "attacks" : 1, "avg_score" : member_cwl_result.members_stars, "clan_tag": clan_tag}, ignore = False,
                     expression = f"ON DUPLICATE KEY UPDATE stars = IF(clan_tag = '{clan_tag}', stars + VALUES(stars), stars), attacks = IF(clan_tag = '{clan_tag}', attacks+1, attacks), avg_score = stars / attacks")
 
@@ -528,7 +476,7 @@ class ClanDataExtractions(ResponseHandler):
 
         cursor = self.get_cursor()
         clan_tag_fixed = clan_tag.replace('0', 'O')
-        cursor.execute(f'SELECT CASE WHEN EXISTS(SELECT clan_tag FROM ClanWarLeague_results WHERE clan_tag = "{clan_tag_fixed}") THEN 0 ELSE 1 END AS IsEmpty')
+        cursor.execute(f'SELECT CASE WHEN EXISTS(SELECT clan_tag FROM {Tables.CWL_results.value} WHERE clan_tag = "{clan_tag_fixed}") THEN 0 ELSE 1 END AS IsEmpty')
         result = cursor.fetchone()
         cursor.close()
         return result[0]
@@ -537,7 +485,7 @@ class ClanDataExtractions(ResponseHandler):
     def _parse_cwl_results_to_caption(self, clan_tag: str):
 
 
-        members_info = self.fetch_all('*', 'ClanWarLeague_results', f"WHERE clan_tag = '{clan_tag}' ORDER BY avg_score DESC")
+        members_info = self.fetch_all('*', Tables.CWL_results.value, f"WHERE clan_tag = '{clan_tag}' ORDER BY avg_score DESC")
         caption = ''
         for index, member_info in enumerate(members_info):
             caption += text(bold(f'{index+1}.'),
@@ -644,8 +592,8 @@ class ClanDataExtractions(ResponseHandler):
     def _get_event_endtime(self, event_time: str, round_info: dict[str], utcnow_time: str):
 
 
-        parsed_starttime = self.__parse_datetime(round_info[event_time])
-        handled_event_time = datetime.strptime(f'{parsed_starttime["year"]}-{parsed_starttime["month"]}-{parsed_starttime["day"]} {parsed_starttime["hour"]}:{parsed_starttime["minute"]}:{parsed_starttime["second"]}', '%Y-%m-%d %H:%M:%S')
+        parsed_starttime = self._parse_datetime(round_info[event_time])
+        handled_event_time = datetime.strptime(f'{parsed_starttime.year}-{parsed_starttime.month}-{parsed_starttime.day} {parsed_starttime.hour}:{parsed_starttime.minute}:{parsed_starttime.seconds}', '%Y-%m-%d %H:%M:%S')
         handled_utcnow_time = datetime.strptime(utcnow_time, '%Y-%m-%d %H:%M:%S')
 
         result = handled_event_time - handled_utcnow_time
@@ -665,7 +613,7 @@ class ClanDataExtractions(ResponseHandler):
                                                                             )
                                                                    )
 
-            self._parse_cw_members_db_response(members_info)
+            caption = self._parse_cw_membersinfo_to_caption(members_info)
 
         except BadRequestError:
             caption = text(bold('З мого боку сталася помилка 😔'))
@@ -675,6 +623,28 @@ class ClanDataExtractions(ResponseHandler):
         except ClanWarEndedError:
             caption = text(bold('Війна закінчена, неможливо дізнатися учасників 😔'))
             return caption
+
+    
+    def _get_cw_membersinfo(self, response: Response) -> str:
+
+
+        match response.status_code:
+
+            case 200:
+
+                if response.json_clan_info['state'] in ['inWar', 'preparation', 'warEnded']:
+
+                    members_tags = (member['tag'] for member in response.json_clan_info['clan']['members'])
+                    members_names = (member['name'] for member in response.json_clan_info['clan']['members'])
+                    members_map_positions = (member['mapPosition'] for member in response.json_clan_info['clan']['members'])
+
+                    return ClanWarMembersInfo(members_names, members_tags, members_map_positions)
+
+                else:
+                    raise ClanWarEndedError()
+
+            case 404:
+                raise BadRequestError()
 
 
     async def get_caption_rade_statistic(self, clan_tag: str, chat_id: int):
@@ -692,14 +662,8 @@ class ClanDataExtractions(ResponseHandler):
                     return await self.get_caption_rade_statistic(clan_tag, chat_id)
 
                 case _:
-
-                    caption = ''
-                    for index, member_info in enumerate(members_info):
-                        caption += text(bold(f"{index+1}."),
-                                        bold(f"👤 {member_info[0]}"),
-                                        bold(f"Накопичені 🪙: {member_info[1]}"),
-                                        bold(f"Пожертвувані 🪙: {member_info[2]}"),
-                                        bold(f"Збережені 🪙: {member_info[3]}\n\n"), sep = '\n')
+                    caption = self._parse_rade_statistic_to_caption(members_info)
+                    
             return caption
 
         except mysql.connector.errors.DatabaseError:
@@ -732,7 +696,7 @@ class Polling(ClanDataExtractions):
 
         collected_coins = member_info['achievements'][-2]['value']
         donated_coins = member_info['achievements'][-1]['value']
-        self.insert("RadeMembers", {"member_name": member_info['name'], "member_tag": member_info['tag'], "collected_coins" : collected_coins, "donated_coins" : donated_coins,
+        self.insert(Tables.RadeMembers.value, {"member_name": member_info['name'], "member_tag": member_info['tag'], "collected_coins" : collected_coins, "donated_coins" : donated_coins,
                     "saved_coins" : collected_coins - donated_coins, "clan_tag": clan_tag}, ignore = False,
         expression = f"ON DUPLICATE KEY UPDATE collected_coins = {collected_coins}, donated_coins = {donated_coins}, saved_coins = {collected_coins - donated_coins}")
 #------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -746,7 +710,7 @@ class Polling(ClanDataExtractions):
             for clan_tag in clan_tags:
 
                 clan_members_response = request_to_api(f'clans/%23{clan_tag[1:]}/members') #HERE IS SLICE BECAUSE API ALREADY HAVE PARSED SYMBOL '#' INTO THE LINK
-                members_info = self._parse_clan_members_db_response(
+                members_info = self._get_clan_memberlist(
                                                               Response(
                                                                        clan_members_response.status_code, 
                                                                        clan_members_response.json_clan_info
@@ -766,6 +730,35 @@ class Polling(ClanDataExtractions):
 
         except BadRequestError:
             logging.exception('RequestStatusCode - 404, maybe clan was deleted/became private')
+
+
+    def _get_clan_memberlist(self, response: Response) -> ClanMembersInfo:
+
+        match response.status_code:
+
+            case 200:
+
+                    members_names = [member['name'] for member in response.json_clan_info['items']]
+                    members_tags = [member['tag'] for member in response.json_clan_info['items']]
+                    members_roles = [members['role'] for members in response.json_clan_info['items']]
+
+                    return ClanMembersInfo(members_names, members_tags, members_roles)
+                
+            case 404:
+                
+                raise BadRequestError()
+
+    
+    def _update_memberlist_in_DB(self, members_names: list[str], members_tags: list[str], members_roles: list[str], clan_tag: str):
+
+
+        self.delete(Tables.ClanMembers.value, f"WHERE clan_tag = '{clan_tag}' AND member_tag NOT IN {tuple(members_tags)}")
+
+        for member_name, member_tag, member_role in zip(members_names, members_tags, members_roles):
+            self.insert(Tables.ClanMembers.value, {'member_name': member_name,
+                        'member_tag' : member_tag,
+                        'member_role' : member_role,
+                        'clan_tag' : clan_tag}, ignore = True)
 
 #------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
