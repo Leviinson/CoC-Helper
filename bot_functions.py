@@ -85,7 +85,7 @@ async def get_cwl_results(msg: types.Message):
 
 
     clan_tag = await clan._get_clan_tag(msg.chat.id)
-    caption = await clan.get_cwl_results(clan_tag.replace('0', 'O'), msg.chat.id, ParseMode.MARKDOWN_V2)
+    caption = await clan.get_cwl_results(clan_tag.replace('0', 'O'), msg.chat.id)
     await msg.answer(caption, ParseMode.MARKDOWN_V2)
 
 
