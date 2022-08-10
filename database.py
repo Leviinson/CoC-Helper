@@ -35,6 +35,7 @@ class Tables(Enum):
     RadeMembers = 'RadeMembers'
     ChatMembers = 'ChatMembers'
     CWL_members = 'ClanWarLeague_memberlist'
+    CWL_results = ' ClanWarLeague_results'
 
 
 class SelectWhere(NamedTuple):
