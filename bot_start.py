@@ -1,7 +1,11 @@
+'''Represents process of server preparing to the start actions.
+
+Initializes DB tables if it aren't created, registers clan in DB if it isn't registered.
+Provides instruction message for usage to user in chat.'''
+
 import asyncio
 import logging
 import re
-from textwrap import fill
 from threading import Event, Thread
 
 
@@ -11,9 +15,10 @@ from aiogram.utils.markdown import text, bold
 from aiogram.types import ParseMode
 from aiogram.utils.exceptions import ChatNotFound
 
+from mysql.connector.errors import IntegrityError
 
-
-from database import DataBaseManipulation
+from database import DataBaseManipulations
+from database import SelectQuery
 from database import Tables
 from database import check_initDB
 
@@ -25,58 +30,16 @@ from handle_clan_data import request_to_api
 from handle_tg_user_data import check_user_status
 
 from bot_config import dp, bot
+from bot_config import DelayPollClanWarMemberlistAndRadeStatistic
 
-from mysql.connector.errors import IntegrityError
+from type_hintings import Response
 from states import Authentification
 
 import bot_functions
 
 logging.basicConfig(level=logging.INFO)
 
-db = DataBaseManipulation()
-
-
-async def define_caption_for_public_chat_type(chat_id: int, user_id: str):
-
-
-    user_status = await check_user_status(chat_id, user_id)
-    if user_status in ['creator', 'owner', 'administrator']:
-
-        clan_info = _find_chat_id_in_DB(chat_id)
-        caption_for_chat_type = await _handle_searching_result(clan_info)
-
-
-    else:
-        caption_for_chat_type = text(bold('По кнопці знизу [ / ] можеш роздивитися мої команди 😌'))
-        
-    return caption_for_chat_type
-
-
-def _find_chat_id_in_DB(chat_id: int) -> tuple[str] | None:
-
-
-    result = db.fetch_one('chat_id, clan_tag', Tables.Chats.value, f"WHERE chat_id = '{chat_id}'")
-    return result
-
-
-
-
-async def _handle_searching_result(clan_info: tuple[str, str] | None) -> str:
-    
-
-    if isinstance(clan_info, tuple):
-        
-        await Authentification.clan_tag_registered.set()
-        caption = text(bold('Клан в цьому чаті вже зареєстрований 😊\n'),
-                       bold('По кнопці знизу [ / ] можеш роздивитися мої команди 😌'), sep = '\n')
-        return caption
-
-    else:
-
-        await Authentification.create_clan_tag.set()
-        caption = text(bold('Клан в цьому чаті ще не зареєстрований 😔\n'),
-                       bold('Введіть у чаті #️⃣ клану:'), sep = '\n')
-        return caption
+db = DataBaseManipulations()
 
             
 @dp.message_handler(content_types = 'new_chat_members', state='*')
@@ -93,8 +56,8 @@ async def say_bye_to_member(msg: types.Message):
 
     caption = bold(f'Бувай, {msg.left_chat_member.full_name} 😔')
     await msg.answer(caption, ParseMode.MARKDOWN_V2)
-    await bot.set_chat_permissions()
 
+#------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 @dp.message_handler(commands = 'start', state = '*')
 async def user_manual(msg: types.Message):
@@ -115,12 +78,67 @@ async def user_manual(msg: types.Message):
         return await msg.answer((caption_general + caption_for_chat_type), ParseMode.MARKDOWN_V2)
 
     else:
-        caption_for_chat_type = await define_caption_for_public_chat_type(msg.chat.id, msg.from_user.id)
+        caption_for_chat_type = await define_caption_by_user_status(msg.chat.id, msg.from_user.id)
         return await msg.answer(caption_for_chat_type, ParseMode.MARKDOWN_V2)
 
 
+async def define_caption_by_user_status(chat_id: int, user_id: str) -> str:
+    """Defines user status in chat, if there is chat_id of the current chat in the table 'Chats' and returns
+    caption for it with params chat_id and user_id; returns relative caption to the user status.
+
+    :param chat_id: telegram chat id
+    :param user_id: user id that sent messsage in current chat
+    """
+
+
+    user_status = await check_user_status(chat_id, user_id)
+    if user_status in ['creator', 'owner', 'administrator']:
+
+        clan_info = _find_chat_id_in_DB(chat_id)
+        caption_for_chat_type = await _handle_searching_result(clan_info)
+
+
+    else:
+        caption_for_chat_type = text(bold('По кнопці знизу [ / ] можеш роздивитися мої команди 😌'))
+        
+    return caption_for_chat_type
+
+
+def _find_chat_id_in_DB(chat_id: int) -> tuple | None:
+    '''Takes chat id as a parameter, finds it and returns result.
+    :parameter chat_id: `chat id` of the telegram chat'''
+
+
+    result = db.fetch_one(SelectQuery('chat_id, clan_tag', Tables.Chats.value, f"WHERE chat_id = %s", (chat_id, )))
+    return result
+
+
+async def _handle_searching_result(clan_info: tuple | None) -> str:
+    '''Checks if clan registered in table and activates relevant state.
+
+    :parameter clan_info: `chat_id` and `clan_tag` values from table `Chats`'''
+    
+    match clan_info:
+
+        case tuple():
+            await Authentification.clan_tag_registered.set()
+            caption = text(bold('Клан в цьому чаті вже зареєстрований 😊\n'),
+                           bold('По кнопці знизу [ / ] можеш роздивитися мої команди 😌'), sep = '\n')
+            return caption
+
+        case None:
+            await Authentification.create_clan_tag.set()
+            caption = text(bold('Клан в цьому чаті ще не зареєстрований 😔\n'),
+                           bold('Введіть у чаті #️⃣ клану:'), sep = '\n')
+            return caption
+
+#------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
 @dp.message_handler(state = Authentification.create_clan_tag, content_types='text')
 async def check_and_save_clanTag_in_DB(msg: types.Message):
+    """Extracts clan tag from user message and sends request to the API with this clan tag to check if clan exists.
+
+    Then, if the clan exists, it saves it to the table; else returns error message to the user."""
 
     
     clanTag = re.search(r'^#[a-zA-Z0-9]*$', msg.text)
@@ -136,13 +154,16 @@ async def check_and_save_clanTag_in_DB(msg: types.Message):
             return await msg.answer(caption, ParseMode.MARKDOWN_V2)
 
     else:
-        caption = text(bold('На жаль, тег введено не в тому форматі 😔'),
+        caption = text(bold('Ha жаль, тег введено не в тому форматі 😔'),
                        bold('Спробуйте ще раз.'), sep='\n')
         return await msg.answer(caption, ParseMode.MARKDOWN_V2)
 
 
 async def _save_clan(chat_id: int, clan_tag: str, msg: types.Message):
-
+    """Inserts chat and clan info in the table; fills table 'ChatAdmins' by admins information from the chat.
+    
+    :param chat_id: telegram chat id
+    :param clan_tag: clan tag"""
 
     try:
         db.insert(f'Chats', {'chat_id' : chat_id, 'clan_tag' : clan_tag})
@@ -159,9 +180,10 @@ async def _save_clan(chat_id: int, clan_tag: str, msg: types.Message):
 
 
 def _is_clan_exists(clan_tag: str) -> bool:
+    '''Takes `clan tag`, makes a test request to api about clan with this clan tag.
+    Returns True if request status code equalst to 200.'''
 
-
-    req = request_to_api(f'clans/%23{clan_tag[1:]}') #here is slice because '#' in api link already parsed as '%23'
+    req = request_to_api(f'clans/%23{clan_tag[1:]}') #here is slice because symbol '#' in api link already parsed as '%23'
 
     if req.status_code == 200:
         return True
@@ -170,9 +192,10 @@ def _is_clan_exists(clan_tag: str) -> bool:
 
 
 async def _fill_ChatAdmins_table():
+    '''Collects all chat ids from table, makes requests to Telegram Bot Api with this id to get list of chat administrators.
+    Inserts chat creator ID and First Name into table ChatAdmins with current chat id.'''
 
-
-    chat_id_list = (x[0] for x in db.fetch_all('chat_id', 'Chats'))
+    chat_id_list = (x[0] for x in db.fetch_all(SelectQuery('chat_id', Tables.Chats.value)))
     try:
 
         for chat_id in chat_id_list:
@@ -189,6 +212,7 @@ async def _fill_ChatAdmins_table():
 
 @dp.message_handler(commands=['members', 'cw_members', 'cw_time', 'cw_status', 'lvk_members', 'lvk_status', 'lvk_results', 'rade_statistic'])
 async def answer_when_clan_is_not_registered(msg: types.Message):
+    """Catches all commands when state 'clan_tag_registered' is off and returns relevant error message in chat."""
 
 
     caption = text(bold('На жаль, клан ще не зареєстрований або бот був перезапущений 😔'),
@@ -197,16 +221,30 @@ async def answer_when_clan_is_not_registered(msg: types.Message):
 
 #------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-def db_preparing():
+def db_preparing(polling_delay_seconds: int = 600):
+    '''
+    Takes polling delay in seconds.
+    Checks if database is initialized; otherwise initializes.
+
+    Calls func _fill_ChatAdmins_table().
+    
+    Creates new thread event and launches class `PollingThread` with
+    this event as a parameter and polling delay in seconds.
+    
+    :parameter `polling_delay_seconds`: delay for polling requests to CoC API in seconds.'''
 
     check_initDB()
     loop = asyncio.new_event_loop()
     loop.run_until_complete(_fill_ChatAdmins_table())
     stopFlag = Event()
-    thread = PollingThread(stopFlag, 300)
+    thread = PollingThread(stopFlag, polling_delay_seconds)
     thread.start()
 
 class PollingThread(Thread):
+    """Executes separate thread to send poll requests to API for clan memberlist and rade statistic every x seconds.
+
+    :parameter event: class threading.Event()
+    :parameter delay_sec: number of the seconds for delay"""
 
     def __init__(self, event: Event, delay_sec: int):
         Thread.__init__(self)
@@ -216,14 +254,32 @@ class PollingThread(Thread):
     def run(self):
         while not self.stopped.wait(self.delay_sec):
             logging.info('PollClanMemberlist')
-            _execute_pollings()
+            _start_pollings()
 
-def _execute_pollings():
+def _start_pollings():
+    '''Starts pollings.'''
 
     poll = Polling()
-    asyncio.run(poll.poll_clan_memberlist())
-    asyncio.run(poll.poll_rade_statistic()) #REPLACE BECAUSE API HAS ALREADY PARSED SYMBOL '#' INTO THE LINK
+    clan_tags = _get_clan_tags_from_db()
+    for clan_tag in clan_tags:
+
+        clan_members_response = request_to_api(f'clans/%23{clan_tag[1:]}/members')
+        asyncio.run(poll.poll_clan_memberlist(Response(
+                                                       clan_members_response.status_code,
+                                                       clan_members_response.json_api_response_info
+                                                       ),
+                                              clan_tag))
+        asyncio.run(poll.poll_rade_statistic(clan_members_response.json_api_response_info, clan_tag)) #REPLACE BECAUSE API HAS ALREADY PARSED SYMBOL '#' INTO THE LINK
+
+
+def _get_clan_tags_from_db() -> list:
+        '''Extracts all clan tags from table `Chats`.
+        
+        Returns list of the registered clan tags.'''
+
+        clan_tags = [clan_tag[0] for clan_tag in DataBaseManipulations().fetch_all(SelectQuery('clan_tag', Tables.Chats.value))]
+        return clan_tags
 
 
 if __name__ == '__main__':
-    executor.start_polling(dp, skip_updates = True, on_startup = db_preparing())
+    executor.start_polling(dp, skip_updates = True, on_startup = db_preparing(polling_delay_seconds = DelayPollClanWarMemberlistAndRadeStatistic))
