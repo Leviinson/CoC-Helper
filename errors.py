@@ -1,3 +1,5 @@
+'''Contains custom errors classes.'''
+
 class BadRequestError(Exception):
     pass
 
