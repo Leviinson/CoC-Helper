@@ -1,3 +1,5 @@
+'''Represents bot interface, returns message answer to user in telegram chat.'''
+
 from datetime import datetime, timedelta
 import logging
 import re
@@ -9,6 +11,7 @@ from aiogram.utils.exceptions import UserIsAnAdministratorOfTheChat
 from aiogram.dispatcher.filters import AdminFilter, IsReplyFilter
 
 from bot_config import dp, bot
+from bot_config import ThrottlingDelay
 from states import Authentification
 
 from handle_clan_data import ClanDataExtractions
@@ -25,12 +28,12 @@ async def anti_flood(msg: types.Message, *args, **kwargs):
 
     
     caption = text(bold('Ви відправляєте запити занадто часто.\nБудь-ласка, будьте повільніше 😌'),
-                   bold('Встановлена частота запитів - один на 10 секунд.'), sep = '\n')
+                   bold(f'Встановлена частота запитів - один на {ThrottlingDelay} секунд.'), sep = '\n')
     await msg.answer(caption, ParseMode.MARKDOWN_V2)
 
 
 @dp.message_handler(commands = 'members', state = Authentification.clan_tag_registered)
-@dp.throttled(anti_flood, rate = 10)
+@dp.throttled(anti_flood, rate = ThrottlingDelay)
 async def get_clan_members(msg: types.Message):
 
 
@@ -40,7 +43,7 @@ async def get_clan_members(msg: types.Message):
 
 
 @dp.message_handler(commands = 'cw_members', state = Authentification.clan_tag_registered)
-@dp.throttled(anti_flood, rate = 10)
+@dp.throttled(anti_flood, rate = ThrottlingDelay)
 async def get_cw_memberlist(msg: types.Message):
     
     
@@ -50,7 +53,7 @@ async def get_cw_memberlist(msg: types.Message):
 
 
 @dp.message_handler(commands = 'lvk_members', state = Authentification.clan_tag_registered)
-@dp.throttled(anti_flood, rate = 10)
+@dp.throttled(anti_flood, rate = ThrottlingDelay)
 async def get_cwl_memberlist(msg: types.Message):
 
     
@@ -60,7 +63,7 @@ async def get_cwl_memberlist(msg: types.Message):
 
 
 @dp.message_handler(commands = 'cw_status', state = Authentification.clan_tag_registered)
-@dp.throttled(anti_flood, rate = 10)
+@dp.throttled(anti_flood, rate = ThrottlingDelay)
 async def get_remaining_time_cw(msg: types.Message):
     
     
@@ -70,7 +73,7 @@ async def get_remaining_time_cw(msg: types.Message):
 
 
 @dp.message_handler(commands='lvk_status', state = Authentification.clan_tag_registered)
-@dp.throttled(anti_flood, rate = 10)
+@dp.throttled(anti_flood, rate = ThrottlingDelay)
 async def get_current_cwl_status(msg: types.Message):
 
 
@@ -80,7 +83,7 @@ async def get_current_cwl_status(msg: types.Message):
 
 
 @dp.message_handler(commands = 'lvk_results', state = Authentification.clan_tag_registered)
-@dp.throttled(anti_flood, rate = 10)
+@dp.throttled(anti_flood, rate = ThrottlingDelay)
 async def get_cwl_results(msg: types.Message):
 
 
@@ -90,6 +93,7 @@ async def get_cwl_results(msg: types.Message):
 
 
 @dp.message_handler(commands = 'rade_statistic', state = Authentification.clan_tag_registered)
+@dp.throttled(anti_flood, rate = ThrottlingDelay)
 async def get_rade_statistic(msg: types.Message):
 
     clan_tag = clan.get_clan_tag(msg.chat.id)
@@ -98,6 +102,7 @@ async def get_rade_statistic(msg: types.Message):
 
 
 @dp.message_handler(AdminFilter(), IsReplyFilter(is_reply = True), commands= 'set_admin', state = Authentification.clan_tag_registered)
+@dp.throttled(anti_flood, rate = ThrottlingDelay)
 async def set_new_admin(msg: types.Message):
 
     if chat._is_member_admin(msg.from_user.id, msg.chat.id):
@@ -113,6 +118,7 @@ async def set_new_admin(msg: types.Message):
 
 
 @dp.message_handler(AdminFilter(), IsReplyFilter(is_reply = True), commands = 'remove_admin', state = Authentification.clan_tag_registered)
+@dp.throttled(anti_flood, rate = ThrottlingDelay)
 async def remove_admin_role(msg: types.Message):
 
     if chat._is_member_admin(msg.from_user.id, msg.chat.id):
@@ -126,7 +132,9 @@ async def remove_admin_role(msg: types.Message):
         caption = text(bold('В вас немає прав адміністратора ❗️'))
         await msg.answer(caption, ParseMode.MARKDOWN_V2)
 
+
 @dp.message_handler(IsReplyFilter(is_reply = True), commands = 'mute', state = Authentification.clan_tag_registered)
+@dp.throttled(anti_flood, rate = ThrottlingDelay)
 async def mute_chat_member(msg: types.Message):
 
 
@@ -158,7 +166,9 @@ async def mute_chat_member(msg: types.Message):
 
 
 @dp.message_handler(IsReplyFilter(is_reply = True), commands = 'unmute', state = Authentification.clan_tag_registered)
+@dp.throttled(anti_flood, rate = ThrottlingDelay)
 async def unmute_chat_member(msg: types.Message):
+
 
     try:
         if chat._is_member_admin(msg.reply_to_message.from_user.id, msg.chat.id):
@@ -179,6 +189,7 @@ async def unmute_chat_member(msg: types.Message):
 
 
 @dp.message_handler(IsReplyFilter(is_reply = False), commands= ['set_admin', 'remove_admin', 'mute', 'unmute'], state = Authentification.clan_tag_registered)
+@dp.throttled(anti_flood, rate = ThrottlingDelay)
 async def set_new_admin(msg: types.Message):
 
 
