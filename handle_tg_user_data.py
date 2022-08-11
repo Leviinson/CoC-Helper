@@ -1,5 +1,5 @@
 from bot_config import bot
-from handle_clan_data import DataBaseManipulation
+from handle_clan_data import DataBaseManipulations
 
 async def check_user_status(chat_id: str, user_id: str):
 
@@ -8,7 +8,7 @@ async def check_user_status(chat_id: str, user_id: str):
 
     return user_status
 
-class ChatDBManipulations(DataBaseManipulation):
+class ChatDBManipulations(DataBaseManipulations):
 
 
     def _is_member_admin(self, user_id: int, chat_id: int) -> bool:
