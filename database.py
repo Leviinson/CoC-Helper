@@ -1,3 +1,15 @@
+"""This module contains all database controls.
+
+Classes:
+    DataBaseManilupations
+    Tables
+    SelectWhere
+    FetchAll
+Funcs:
+    _init_DB()
+    _Check_init_DB()"""
+
+
 import logging
 import re
 
@@ -28,160 +40,168 @@ conn = connection.MySQLConnection(
 cursor = MySQLCursorBuffered(conn)
 
 class Tables(Enum):
+    '''
+    Storing the names of all tables in DB.
 
+    :parameter `Chats`: table name `Chats`
+    :parameter `ClanMembers`: table name `ClanMembers`
+    :parameter `RadeMembers`: table name `RadeMembers`
+    :parameter `ChatMembers`: table name `ChatMembers`
+    :parameter `CWL_members`: table name `ClanWarLeague_memberlist`
+    :parameter `CWL_results`: table name `ClanWarLeague_results`
+    '''
 
     Chats = 'Chats'
     ClanMembers = 'ClanMembers'
     RadeMembers = 'RadeMembers'
     ChatMembers = 'ChatMembers'
     CWL_members = 'ClanWarLeague_memberlist'
-    CWL_results = ' ClanWarLeague_results'
+    CWL_results = 'ClanWarLeague_results'
 
+class SelectQuery_args(Dict):
+    '''
+    Pattern to fill parameter expression_args in class `SelectQuery`.
+    
+    :parameter `column_name`: column name
+    :parameter `column_value`: column value
+    '''
 
-class SelectWhere(NamedTuple):
+    column_name: str
+    column_value: str | int
 
+class SelectQuery(NamedTuple):
+    '''
+    Patterns to fill SQL query, accected as a parameter in funcs.
 
-    columns_name1: str
+    :parameter `columns_name`: columns names, which need to select (in according SQL query format)
+    :parameter `table_name`: tables names, which need to select (in according SQL query format)
+    :parameter `expression`: optional parameter inserting after main sql query, values must be replaced by placeholder - `%s` (!)
+    :parameter `expression_values`: optional parameter, that inserts expression values into placeholders, that indicated in parameter "expression"
+        for example: `(value,)` or `(value, value)`.
+    '''
+
+    columns_name: str
     table_name: Tables
-    columns_name2: str
-    expression_sql: str #VALUES MUST BE REPLACED BY PLACEHOLDERS (!)
-    args: tuple[str,]
+    expression: str = None
+    expression_values: tuple = None
 
 
-class FetchAll(NamedTuple):
-
-
-    columns: tuple[str] | str
-    tables: tuple[str] | str
-
-
-class DataBaseManipulation():
+class DataBaseManipulations():
 
 
     def get_cursor(self):
-
-
+        '''Returns `MySQLCursorBuffered` with current `mysql.connector.connection.MySQLConnection()` as a parameter.'''
         return MySQLCursorBuffered(conn)
 
 
     def get_connection(self):
-
-
+        '''Returns current mysql.connector.connection.MySQLConnection()'''
         return conn
 
 
-    def select(self, columns: str, table_name: str, expression = None):
+    def select(self, query: SelectQuery):
+        '''Takes as a parameter `SelectQuery` class, executes select query and returns current cursor place.'''
 
+        cursor = self.get_cursor()
+        cursor.execute('USE CoC_Helper')
+        SQL_raw = f'SELECT {query.columns_name} FROM {query.table_name}'
+        match query.expression:
 
-        
-            cursor = self.get_cursor()
-            cursor.execute('USE CoC_Helper')
-            SQL_raw = f'SELECT {columns} FROM {table_name}'
-            match expression:
+            case str():
+                cursor.execute(f'{SQL_raw} {query.expression}', params = query.expression_values)
 
-                case str():
-                    cursor.execute(f'{SQL_raw} {expression}')
+            case None:
+                cursor.execute(SQL_raw) 
 
-                case None:
-                    cursor.execute(SQL_raw) 
-
-            return cursor
+        return cursor
 
     
-    def select_distinct(self, columns: str, table_name: str, expression = None):
+    def fetch_one(self, select_query: SelectQuery) -> tuple | None:
+        '''Takes as a parameter `SelectQuery' class, returns next row of a query result set'''
 
+        match select_query.expression:
 
+            case None:
+                return self.select(SelectQuery(select_query.columns_name,
+                                               select_query.table_name
+                                               )).fetchone()
+
+            case _:
+                return self.select(SelectQuery(select_query.columns_name,
+                                               select_query.table_name,
+                                               select_query.expression,
+                                               select_query.expression_values
+                                               )).fetchone()        
+
+    def fetch_all(self, select_query: SelectQuery) -> list:
+        '''Takes as a parameter `SelectQuery` class, returns all rows of a query result set.
+
+        :parameter `select_query`: class `SelectQuery`'''
+
+        match select_query.expression:
+
+            case None:
+                return self.select(SelectQuery(select_query.columns_name,
+                                               select_query.table_name
+                                               )).fetchall()
+
+            case _: 
+                return self.select(SelectQuery(
+                                               select_query.columns_name,
+                                               select_query.table_name,
+                                               select_query.expression,
+                                               select_query.expression_values
+                                               )).fetchall()
+
+    def insert(self, table: str, columns_value: dict, ignore: bool = False, expression: str = None):
+        '''Takes table name, columns name and it values, bool value of mode `ignore`, expression as optional parameter;
+        parses parameters into SQL query and executes it, confirms SQL connection commit, closes cursor.'''
         
-            cursor = self.get_cursor()
-            cursor.execute('USE CoC_Helper')
-            SQL_raw = f"SELECT DISTINCT {columns} FROM {table_name}"
-            match expression:
+        cursor = self.get_cursor()
+        columns = ', '.join(columns_value.keys())
+        values = tuple(columns_value.values())
+        placeholder = re.findall(r'%s', '%s'*len(values))
 
-                case str():
-                    cursor.execute(f"{SQL_raw} {expression}")
-                    
-                case None:
-                    cursor.execute(SQL_raw)
+        match ignore, expression:
 
-            return cursor
-    
-    def fetch_one(self, columns: tuple[str] | str, tables: tuple[str] | str, expression = None) -> None | tuple[str, str]:
+            case True, None:
+                SQL = f"INSERT IGNORE INTO {table}({columns}) VALUES({', '.join(placeholder)})"
 
+            case True, str():
+                SQL = f"INSERT IGNORE INTO {table}({columns}) VALUES({', '.join(placeholder)}) {expression}"
 
-            match expression:
+            case False, None:
+                SQL = f"INSERT INTO {table}({columns}) VALUES({', '.join(placeholder)})"
 
-                case None:
+            case False, str():
+                SQL = f"INSERT INTO {table}({columns}) VALUES({', '.join(placeholder)}) {expression}"
 
-                    return self.select(columns, tables).fetchone()
-
-                case _:
-
-                    return self.select(columns, tables, expression).fetchone()        
-
-    def fetch_all(self, columns: tuple[str] | str, tables: tuple[str] | str, expression = None):
-
-
-            match expression:
-
-                case None:
-
-                    return self.select(columns, tables).fetchall()
-
-                case _:
-                    
-                    return self.select(columns, tables, expression).fetchall()
-
-    def insert(self, table: str, columns_value: Dict[str, str], ignore = False, expression = None):
-
-        
-            cursor = self.get_cursor()
-            columns = ', '.join(columns_value.keys())
-            values = tuple(columns_value.values())
-            placeholder = re.findall(r'%s', '%s'*len(values))
-
-            match ignore, expression:
-
-                case True, None:
-
-                    SQL = f"INSERT IGNORE INTO {table}({columns}) VALUES({', '.join(placeholder)})"
-
-                case True, str():
-
-                    SQL = f"INSERT IGNORE INTO {table}({columns}) VALUES({', '.join(placeholder)}) {expression}"
-
-                case False, None:
-
-                    SQL = f"INSERT INTO {table}({columns}) VALUES({', '.join(placeholder)})"
-
-                case False, str():
-
-                    SQL = f"INSERT INTO {table}({columns}) VALUES({', '.join(placeholder)}) {expression}"
-
-            cursor.execute('USE CoC_Helper')
-            cursor.execute(SQL, params = values)
-            cursor.close()
-            return conn.commit()
-
-
-    def delete(self, table_name: str, expressions: str, ignore = bool):
-
+        cursor.execute('USE CoC_Helper')
+        cursor.execute(SQL, params = values)
+        conn.commit()
+        cursor.close()
         
 
-            cursor = self.get_cursor()
-            match ignore:
+    def delete(self, table_name: str, expressions: str, ignore: bool = False):
+        '''Takes table name, expression, bool value of mode `ignore`;
+        parses parameters into SQL query and execute it, confirms SQL connection commit, closes cursor.'''
+        
 
-                case True:
-                    cursor.execute(f'DELETE IGNORE FROM {table_name} {expressions}')
+        cursor = self.get_cursor()
+        match ignore:
 
-                case _:
+            case True:
+                cursor.execute(f'DELETE IGNORE FROM {table_name} {expressions}')
 
-                    cursor.execute(f'DELETE FROM {table_name} {expressions}')
-            conn.commit()
-            cursor.close()
+            case _:
+
+                cursor.execute(f'DELETE FROM {table_name} {expressions}')
+        conn.commit()
+        cursor.close()
 
 
 def _init_DB():
-
+    '''Executes mysql_create_tables.sql script, confirms SQL connection commit, closes cursor.'''
 
     with open('mysql_create_tables.sql', 'r') as script:
         sql_script = script.read()
@@ -198,9 +218,9 @@ def _init_DB():
 
 
 def check_initDB():
+    '''Requests test SQL query to DB, initiate DB if raises exception ProgrammingError.'''
 
-
-  try:
-    cursor.execute(f'SHOW TABLES FROM {mysql_config_db_name};')
-  except errors.ProgrammingError:
-    _init_DB()
+    try:
+        cursor.execute(f'SHOW TABLES FROM {mysql_config_db_name};')
+    except errors.ProgrammingError:
+        _init_DB()
