@@ -417,7 +417,9 @@ class ClanDataExtractions(DataBaseManipulations, Parsers):
 
     
     def _collect_cwl_round_tags(self, cwl_rounds_info_json: dict):
-        '''Extracts skirmishes tags from each round.'''
+        '''Extracts skirmishes tags from each round.
+        
+        Returns taglist of the skirmishes.'''
 
         return cwl_rounds_info_json['warTags']
 
