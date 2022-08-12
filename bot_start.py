@@ -23,8 +23,6 @@ from database import Tables
 from database import check_initDB
 
 
-
-
 from handle_clan_data import Polling
 from handle_clan_data import request_to_api
 from handle_tg_user_data import check_user_status
@@ -237,7 +235,7 @@ def db_preparing(polling_delay_seconds: int = 600):
     loop = asyncio.new_event_loop()
     loop.run_until_complete(_fill_ChatAdmins_table())
     stopFlag = Event()
-    thread = PollingThread(stopFlag, polling_delay_seconds)
+    thread = PollingThread(stopFlag, DelayPollClanWarMemberlistAndRadeStatistic)
     thread.start()
 
 class PollingThread(Thread):
@@ -253,7 +251,6 @@ class PollingThread(Thread):
 
     def run(self):
         while not self.stopped.wait(self.delay_sec):
-            logging.info('PollClanMemberlist')
             _start_pollings()
 
 def _start_pollings():
@@ -264,11 +261,13 @@ def _start_pollings():
     for clan_tag in clan_tags:
 
         clan_members_response = request_to_api(f'clans/%23{clan_tag[1:]}/members')
+        logging.info('PollClanMemberlist')
         asyncio.run(poll.poll_clan_memberlist(Response(
                                                        clan_members_response.status_code,
                                                        clan_members_response.json_api_response_info
                                                        ),
                                               clan_tag))
+        logging.info('PollClanRadeStatistic')
         asyncio.run(poll.poll_rade_statistic(clan_members_response.json_api_response_info, clan_tag)) #REPLACE BECAUSE API HAS ALREADY PARSED SYMBOL '#' INTO THE LINK
 
 
