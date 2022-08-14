@@ -18,8 +18,6 @@ from aiogram.utils.exceptions import ChatNotFound
 from mysql.connector.errors import IntegrityError
 
 from database import DataBaseManipulations
-from database import SelectQuery
-from database import Tables
 from database import check_initDB
 
 
@@ -31,6 +29,7 @@ from bot_config import dp, bot
 from bot_config import DelayPollClanWarMemberlistAndRadeStatistic
 
 from type_hintings import Response
+from type_hintings import SelectQuery, Tables
 from states import Authentification
 
 import bot_functions

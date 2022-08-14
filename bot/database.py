@@ -13,8 +13,7 @@ Funcs:
 import logging
 import re
 
-from typing import NamedTuple, Dict
-from enum import Enum
+from type_hintings import SelectQuery
 
 from mysql.connector import connection, errors
 from mysql.connector.cursor import MySQLCursorBuffered
@@ -38,52 +37,6 @@ conn = connection.MySQLConnection(
 
 
 cursor = MySQLCursorBuffered(conn)
-
-class Tables(Enum):
-    '''
-    Storing the names of all tables in DB.
-
-    :parameter `Chats`: table name `Chats`
-    :parameter `ClanMembers`: table name `ClanMembers`
-    :parameter `RadeMembers`: table name `RadeMembers`
-    :parameter `ChatMembers`: table name `ChatMembers`
-    :parameter `CWL_members`: table name `ClanWarLeague_memberlist`
-    :parameter `CWL_results`: table name `ClanWarLeague_results`
-    '''
-
-    Chats = 'Chats'
-    ClanMembers = 'ClanMembers'
-    RadeMembers = 'RadeMembers'
-    ChatMembers = 'ChatMembers'
-    CWL_members = 'ClanWarLeague_memberlist'
-    CWL_results = 'ClanWarLeague_results'
-
-class SelectQuery_args(Dict):
-    '''
-    Pattern to fill parameter expression_args in class `SelectQuery`.
-    
-    :parameter `column_name`: column name
-    :parameter `column_value`: column value
-    '''
-
-    column_name: str
-    column_value: str | int
-
-class SelectQuery(NamedTuple):
-    '''
-    Patterns to fill SQL query, accected as a parameter in funcs.
-
-    :parameter `columns_name`: columns names, which need to select (in according SQL query format)
-    :parameter `table_name`: tables names, which need to select (in according SQL query format)
-    :parameter `expression`: optional parameter inserting after main sql query, values must be replaced by placeholder - `%s` (!)
-    :parameter `expression_values`: optional parameter, that inserts expression values into placeholders, that indicated in parameter "expression"
-        for example: `(value,)` or `(value, value)`.
-    '''
-
-    columns_name: str
-    table_name: Tables
-    expression: str = None
-    expression_values: tuple = None
 
 
 class DataBaseManipulations():
