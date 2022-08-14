@@ -1,7 +1,7 @@
 from bot_config import bot
 from handle_clan_data import DataBaseManipulations
 
-async def check_user_status(chat_id: str, user_id: str):
+async def check_user_status(chat_id: str, user_id: int):
 
     user_data = await bot.get_chat_member(chat_id, user_id)
     user_status = user_data['status']

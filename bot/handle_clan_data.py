@@ -17,21 +17,21 @@ import requests
 import logging
 from requests.exceptions import ConnectionError
 from typing import Generator
-from threading import Thread, Event
 from threading import enumerate as thread_enumerate
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from aiogram.utils.markdown import text, bold
 from aiogram.types import ParseMode
 import mysql.connector.errors
 
-from bot_config import API_TOKEN, bot, DelayPollClanWarLeagueMemberlist
-from database import DataBaseManipulations, SelectQuery, Tables
+from bot_config import API_TOKEN, bot
+from database import DataBaseManipulations
 from errors import BadRequestError, ClanNotFoundError, ClanWarEndedError
 
 from type_hintings import Response, DateTime
 from type_hintings import ClanWarLeagueMembersInfo, ClanWarLeagueMembersAttacksResult
 from type_hintings import ClanWarMembersInfo, ClanMembersInfo
+from type_hintings import SelectQuery, Tables
 
 
 logging.basicConfig(level = logging.INFO)
@@ -161,7 +161,7 @@ class ClanDataExtractions(DataBaseManipulations, Parsers):
         '''Takes chat id of current chat and returns relative clan tag to this chat.'''
 
         clan_tag = self.fetch_one(SelectQuery('clan_tag', Tables.Chats.value, f'WHERE chat_id = %s', (chat_id,)))
-        return clan_tag[0]
+        return clan_tag[0] #object of NoneType isn`t subscriptable, but keep in mind, that we can`t start use the program, while user is not registered
     
 #------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -294,7 +294,7 @@ class ClanDataExtractions(DataBaseManipulations, Parsers):
         return threads_names
 
     
-    async def _insert_cwl_memberlist_in_DB(self, response: Response, clan_tag: str) -> str:
+    async def _insert_cwl_memberlist_in_DB(self, response: Response, clan_tag: str):
         '''Takes typehinting class "Response" and clan_tag as a parameters.
 
         Continues operation if cwl state is `'inWar'` or `'preparation'`, else raises `ClanWarEndedError`. 
@@ -502,7 +502,7 @@ class ClanDataExtractions(DataBaseManipulations, Parsers):
         cursor.execute(f'SELECT CASE WHEN EXISTS(SELECT clan_tag FROM {Tables.CWL_results.value} WHERE clan_tag = "{clan_tag_fixed}") THEN 0 ELSE 1 END AS IsEmpty')
         result = cursor.fetchone()
         cursor.close()
-        return result[0]
+        return result
 
     async def _notify_about_start_of_the_process(self, chat_id: int, __ParseMode = ParseMode.MARKDOWN_V2):
         '''Takes chat id and ParseMode as a parameters, serves to notify the user, that obtaining information about each member of the CWL began.
@@ -578,7 +578,6 @@ class ClanDataExtractions(DataBaseManipulations, Parsers):
 
                 result = self._get_state_endtime('startTime', round_info, current_utc_time)
                 caption = text(bold(f'Час до початку першого раунду: {result} 🕔'))
-                return caption
 
             case 6:
                 
@@ -588,19 +587,16 @@ class ClanDataExtractions(DataBaseManipulations, Parsers):
 
                     result = result = self._get_state_endtime('startTime', round_info, current_utc_time)
                     caption = text(bold(f'Час до початку останнього раунду: {result} 🕔'))
-                    return caption
 
                 if state == 'inWar':
 
                     result = result = self._get_state_endtime('endTime', round_info, current_utc_time)
                     caption = text(bold(f'Час до кінця останнього раунду: {result} 🕔'))
-                    return caption
 
             case _:
 
                 result = self._get_state_endtime('endTime', round_info, current_utc_time)
                 caption = text(bold(f'Час до кінця {current_round_number} раунду: {result} 🕔'))
-                return caption
 
         return caption
 
@@ -647,11 +643,11 @@ class ClanDataExtractions(DataBaseManipulations, Parsers):
         return caption
 
     
-    def _get_cw_membersinfo(self, response: Response) -> str:
+    def _get_cw_membersinfo(self, response: Response) -> ClanWarMembersInfo:
         '''Takes typehinting class `Response` as a parameter, 
             collects members info from api response into the three separate generators.
         
-        Return typehinting filled class `ClanWarMembersInfo`'''
+        Returns typehinting filled class `ClanWarMembersInfo`'''
 
         if response.json_api_response_info['state'] in ['inWar', 'preparation', 'warEnded']:
 
@@ -781,7 +777,7 @@ class Polling(ClanDataExtractions):
         return members_tags
 
 
-    def _insert_member_rade_results_in_table(self, member_info: list[str], clan_tag: str):
+    def _insert_member_rade_results_in_table(self, member_info: dict, clan_tag: str):
         '''Takes member results on a rade and clan tag of his clan as a separate parameter.
         
         Inserts member info into the table.'''
