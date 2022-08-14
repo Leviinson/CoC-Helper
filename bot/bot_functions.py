@@ -16,6 +16,9 @@ from states import Authentification
 
 from handle_clan_data import ClanDataExtractions
 from handle_tg_user_data import ChatDBManipulations
+from database import DataBaseManipulations
+from type_hintings import SelectQuery, Tables
+
 
 
 chat = ChatDBManipulations()
@@ -186,6 +189,50 @@ async def unmute_chat_member(msg: types.Message):
         logging.error('User have tried to unmute chat administrator.')
         caption = text(bold("Це був адміністратор чату, він непокорний м'юченню принципово 😌"))
         await msg.answer(caption, ParseMode.MARKDOWN_V2)
+
+
+@dp.message_handler(IsReplyFilter(is_reply = True), commands = 'set_nick', state = Authentification.clan_tag_registered)
+@dp.throttled(anti_flood, rate = ThrottlingDelay)
+async def add_user_nickname(msg: types.Message):
+    '''Chat owner creates nickname for users by answer on his message,
+    then this nickname inserts into the table "ChatUsers_nicknames"'''
+
+    user_id = msg.reply_to_message.from_user.id
+    chat_id = msg.chat.id
+    if chat._is_member_admin(user_id, chat_id):
+        try:
+            user_nickname = msg.text.split(' ')[1] #it can raise IndexError, when msg after command is empty
+            if len(user_nickname) > 30:
+                caption = text(bold('Ім`я не повинно перевищувати кількість 30-ти символів ❗️'))
+                return await msg.answer(caption, ParseMode.MARKDOWN_V2)
+
+            DataBaseManipulations().insert(Tables.UsersNames.value,
+                                           {"user_id" : user_id, "chat_id" : chat_id, "user_nickname" : user_nickname},
+                                           expression = f"ON DUPLICATE KEY UPDATE user_nickname = VALUES(user_nickname)")
+            await msg.answer(text(bold(f'Користувачу {msg.reply_to_message.from_user.id} встановлено локальний нікнейм {user_nickname} ❗️')), ParseMode.MARKDOWN_V2)
+        
+        except IndexError:
+            caption = text(bold('Ім`я повинно бути більше ніж з одного символа ❗️'))
+            return await msg.answer(caption, ParseMode.MARKDOWN_V2)
+    else:
+        return await msg.answer(text(bold('Це доступно тільки власнику чату ❗️')))
+
+
+@dp.message_handler(IsReplyFilter(is_reply = True), commands = 'get_nick', state = Authentification.clan_tag_registered)
+@dp.throttled(anti_flood, rate = ThrottlingDelay)
+async def get_user_nickname(msg: types.Message):
+    '''Returns user nickname from table "ChatUsers_nicknames" by answer on his message'''
+
+    user_nickname = DataBaseManipulations().fetch_one(SelectQuery('user_nickname', Tables.UsersNames.value, f'WHERE chat_id = {msg.chat.id} AND user_id = {msg.reply_to_message.from_user.id}'))
+    match user_nickname:
+
+        case tuple():
+            
+            return await msg.answer(text(bold(user_nickname[0])), ParseMode.MARKDOWN_V2)
+
+        case None:
+
+            return await msg.answer(text(bold('Данному користувачу не встановленого жодного нікнейму 😔')), ParseMode.MARKDOWN_V2)
 
 
 @dp.message_handler(IsReplyFilter(is_reply = False), commands= ['set_admin', 'remove_admin', 'mute', 'unmute'], state = Authentification.clan_tag_registered)
